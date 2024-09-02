@@ -1,0 +1,67 @@
+name: Deploy to DigitalOcean
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DigitalOcean Container Registry
+        run: doctl registry login --expiry-seconds 600
+
+      - name: Create .env file
+        run: |
+          echo "API_ID=${{ vars.API_ID }}" >> .env
+          echo "API_HASH=${{ secrets.API_HASH }}" >> .env
+          echo "BOT_TOKEN=${{ secrets.BOT_TOKEN }}" >> .env
+          echo "OFFICIAL_CHANNEL_ID=${{ vars.OFFICIAL_CHANNEL_ID }}" >> .env
+
+      - name: Build and push
+        env:
+          REGISTRY: ${{ vars.DIGITALOCEAN_REGISTRY }}
+        run: |
+          docker build --no-cache --secret id=env_file,src=.env -t ${REGISTRY}/telegram-bot:${GITHUB_REF#refs/tags/} -t ${REGISTRY}/telegram-bot:latest .
+          docker push ${REGISTRY}/telegram-bot:${GITHUB_REF#refs/tags/}
+          docker push ${REGISTRY}/telegram-bot:latest
+
+      - name: Clean up
+        run: rm .env
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Deploy to DigitalOcean droplet
+        env:
+          HOST: ${{ vars.DROPLET_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          REGISTRY: ${{ vars.DIGITALOCEAN_REGISTRY }}
+          DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+        run: |
+          echo "$SSH_PRIVATE_KEY" > private_key && chmod 600 private_key
+          scp -o StrictHostKeyChecking=no -i private_key docker-compose.yml root@${HOST}:/root/
+          ssh -o StrictHostKeyChecking=no -i private_key root@${HOST} << EOF
+            cd /root
+            docker-compose down -v
+            docker system prune -af
+            touch bot_groups.json
+            mkdir -p sessions
+            chmod 666 bot_groups.json
+            chmod 777 sessions
+            doctl auth init -t ${DIGITALOCEAN_ACCESS_TOKEN}
+            doctl registry login
+            docker pull ${REGISTRY}/telegram-bot:latest
+            DIGITALOCEAN_REGISTRY=${REGISTRY} docker-compose up -d
+          EOF
+          rm -f private_key
