@@ -1,0 +1,16 @@
+version: '3.9'
+services:
+  bot:
+    image: ${DIGITALOCEAN_REGISTRY}/telegram-bot:latest
+    restart: always
+    volumes:
+      - /root/bot_groups.json:/app/bot_groups.json
+      - /root/sessions:/app/sessions
+    environment:
+      - DIGITALOCEAN_REGISTRY=${DIGITALOCEAN_REGISTRY}
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "python main.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
