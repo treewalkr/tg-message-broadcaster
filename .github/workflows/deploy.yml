@@ -29,13 +29,15 @@ jobs:
         env:
           REGISTRY: ${{ secrets.DIGITALOCEAN_REGISTRY }}
         run: |
+          VERSION=${GITHUB_REF#refs/tags/}
           if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
             TAG_SUFFIX="-staging"
           else
             TAG_SUFFIX=""
           fi
-          docker build --no-cache --secret id=env_file,src=.env -t ${REGISTRY}/telegram-bot:${GITHUB_REF#refs/tags/}${TAG_SUFFIX} -t ${REGISTRY}/telegram-bot:latest${TAG_SUFFIX} .
-          docker push ${REGISTRY}/telegram-bot:${GITHUB_REF#refs/tags/}${TAG_SUFFIX}
+          FULL_VERSION=$VERSION$TAG_SUFFIX
+          docker build --no-cache --build-arg BOT_VERSION=$FULL_VERSION --secret id=env_file,src=.env -t ${REGISTRY}/telegram-bot:${FULL_VERSION} -t ${REGISTRY}/telegram-bot:latest${TAG_SUFFIX} .
+          docker push ${REGISTRY}/telegram-bot:${FULL_VERSION}
           docker push ${REGISTRY}/telegram-bot:latest${TAG_SUFFIX}
 
       - name: Clean up

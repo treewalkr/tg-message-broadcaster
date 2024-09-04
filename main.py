@@ -19,6 +19,8 @@ from decorators import channel_only, non_channel_only, specific_channel_only
 # Load environment variables
 load_dotenv()
 
+BOT_VERSION = os.getenv("BOT_VERSION", "Unknown")
+
 # Configure logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -173,7 +175,10 @@ async def channel_id_handler(event):
 
 
 async def start_handler(event):
-    await event.reply("Welcome! Use /channelid in the official channel to get its ID.")
+    await event.reply(
+        "Welcome! Use /channelid in the official channel to get its ID. Bot version: "
+        + BOT_VERSION
+    )
     logger.info("Start command received and processed")
 
 
@@ -246,7 +251,7 @@ async def main():
         await channel_id_handler(event)
 
     @client.on(events.NewMessage(pattern="/start"))
-    @specific_channel_only(OFFICIAL_CHANNEL_ID)
+    @channel_only
     async def start_handler_wrapper(event):
         await start_handler(event)
 

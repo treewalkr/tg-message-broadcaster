@@ -12,6 +12,10 @@ COPY . .
 RUN --mount=type=secret,id=env_file \
     cat /run/secrets/env_file > .env
 
+# Set version as an environment variable
+# This will be overwritten at build time
+ENV BOT_VERSION=development
+
 # Declare volumes
 VOLUME ["/app/bot_groups.json", "/app/sessions"]
 
