@@ -176,8 +176,7 @@ async def channel_id_handler(event):
 
 async def start_handler(event):
     await event.reply(
-        "Welcome! Use /channelid in the official channel to get its ID. Bot version: "
-        + BOT_VERSION
+        f"Welcome! Use `/channelid` in the official channel to get its ID. {BOT_VERSION}"
     )
     logger.info("Start command received and processed")
 
