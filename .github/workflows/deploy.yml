@@ -23,7 +23,7 @@ jobs:
           echo "API_ID=${{ secrets.API_ID }}" >> .env
           echo "API_HASH=${{ secrets.API_HASH }}" >> .env
           echo "BOT_TOKEN=${{ secrets.BOT_TOKEN }}" >> .env
-          echo "OFFICIAL_CHANNEL_ID=${{ secrets.OFFICIAL_CHANNEL_ID }}" >> .env
+          echo "OFFICIAL_CHANNEL_IDS=${{ secrets.OFFICIAL_CHANNEL_IDS }}" >> .env
 
       - name: Build and push
         env:

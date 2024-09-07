@@ -1,17 +1,38 @@
 from asyncio.log import logger
 from telethon.tl.types import Channel
 import functools
-from typing import Optional, Callable
+from typing import Optional, Callable, List
+import os
+import ast
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+
+def parse_env_list(env_var_name: str, default: List[int] = []) -> List[int]:
+    """Parse a list of integers from an environment variable."""
+    env_value = os.getenv(env_var_name)
+    if env_value is None:
+        return default
+    try:
+        parsed_list = ast.literal_eval(env_value)
+        if not isinstance(parsed_list, list):
+            raise ValueError("Environment variable must be a list")
+        return [int(item) for item in parsed_list]
+    except (ValueError, SyntaxError) as e:
+        logger.error(f"Error parsing {env_var_name}: {e}")
+        return default
 
 
 def chat_type_check(
-    func: Callable, channel_id: Optional[int] = None, allow_channel: bool = True
+    func: Callable, channel_ids: Optional[List[int]] = None, allow_channel: bool = True
 ):
     """Base decorator for chat type checking.
 
     Args:
         func (Callable): The function to be decorated.
-        channel_id (Optional[int]): The ID of the specific channel to allow, if any.
+        channel_ids (Optional[List[int]]): The list of channel IDs to allow, if any.
         allow_channel (bool): Whether to allow the command in channels or not.
     """
 
@@ -21,8 +42,8 @@ def chat_type_check(
         is_channel_chat = isinstance(chat, Channel)
 
         if allow_channel:
-            if channel_id is not None:
-                if is_channel_chat and chat.id == channel_id:
+            if channel_ids is not None:
+                if is_channel_chat and chat.id in channel_ids:
                     return await func(event)
                 else:
                     await event.reply("Command not allowed in this chat.")
@@ -46,9 +67,11 @@ def chat_type_check(
     return wrapper
 
 
-def specific_channel_only(channel_id: int):
-    """Decorator to restrict commands to a specific channel."""
-    return lambda func: chat_type_check(func, channel_id=channel_id)
+def channels_only(channel_ids: Optional[List[int]] = None):
+    """Decorator to restrict commands to specific channels."""
+    if channel_ids is None:
+        channel_ids = parse_env_list("OFFICIAL_CHANNEL_IDS", [])
+    return lambda func: chat_type_check(func, channel_ids=channel_ids)
 
 
 def channel_only(func: Callable):
@@ -59,3 +82,9 @@ def channel_only(func: Callable):
 def non_channel_only(func: Callable):
     """Decorator to restrict commands to non-channel chats."""
     return chat_type_check(func, allow_channel=False)
+
+
+# Keep the specific_channel_only decorator for backwards compatibility
+def specific_channel_only(channel_id: int):
+    """Decorator to restrict commands to a specific channel."""
+    return channels_only([channel_id])
