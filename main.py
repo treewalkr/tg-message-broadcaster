@@ -14,7 +14,7 @@ import json
 from dotenv import load_dotenv
 from collections import deque
 
-from decorators import non_channel_only, specific_channel_only
+from decorators import channel_only, non_channel_only, specific_channel_only
 
 # Load environment variables
 load_dotenv()
@@ -200,21 +200,27 @@ async def register_group(event):
         logger.info(f"Attempted to register already registered group {chat_id}")
 
 
-#  reset group
-async def reset_group(event):
+async def unregister_group(event):
     chat: Chat = await event.get_chat()
 
     chat_id = abs(chat.id)
     if chat_id in bot_groups:
         bot_groups.remove(chat_id)
         save_groups()
-        await event.reply(
-            f"This group (ID: {chat_id}) has been removed from the broadcast list."
-        )
-        logger.info(f"Removed group {chat_id}")
+        await event.reply(f"This group has been unregistered from broadcasts.")
+        logger.info(f"Unregistered group {chat_id}")
     else:
-        await event.reply("This group is not in the broadcast list.")
-        logger.info(f"Attempted to remove group not in the broadcast list {chat_id}")
+        await event.reply("This group is not registered for broadcasts.")
+        logger.info(
+            f"Attempted to unregister group not in the broadcast list {chat_id}"
+        )
+
+
+async def reset_all_group(event):
+    bot_groups.clear()
+    save_groups()
+    await event.reply("All groups have been unregistered from broadcasts.")
+    logger.info("Unregistered all groups from broadcast list")
 
 
 # TODO: Implement import/export bot_groups.json file
@@ -235,7 +241,7 @@ async def main():
         await broadcast_handler(event)
 
     @client.on(events.NewMessage(pattern="/channelid"))
-    @specific_channel_only(OFFICIAL_CHANNEL_ID)
+    @channel_only
     async def channel_id_handler_wrapper(event):
         await channel_id_handler(event)
 
@@ -249,15 +255,20 @@ async def main():
     async def list_groups_handler(event):
         await list_groups(event)
 
+    @client.on(events.NewMessage(pattern="/resetgroup"))
+    @specific_channel_only(OFFICIAL_CHANNEL_ID)
+    async def reset_group_handler(event):
+        await reset_all_group(event)
+
     @client.on(events.NewMessage(pattern="/register"))
     @non_channel_only
     async def register_handler(event):
         await register_group(event)
 
-    @client.on(events.NewMessage(pattern="/resetgroup"))
+    @client.on(events.NewMessage(pattern="/unregister"))
     @non_channel_only
-    async def reset_group_handler(event):
-        await reset_group(event)
+    async def unregister_handler(event):
+        await unregister_group(event)
 
     logger.info("Bot started and waiting for events.")
     logger.info(f"Official Channel ID: {OFFICIAL_CHANNEL_ID}")
