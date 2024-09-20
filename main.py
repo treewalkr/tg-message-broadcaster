@@ -14,7 +14,7 @@ import json
 from dotenv import load_dotenv
 from collections import deque
 
-from decorators import channel_only, non_channel_only, specific_channel_only
+from decorators import channel_only, channels_only, non_channel_only, parse_env_list
 
 # Load environment variables
 load_dotenv()
@@ -31,7 +31,10 @@ logger = logging.getLogger(__name__)
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-OFFICIAL_CHANNEL_ID = abs(int(os.getenv("OFFICIAL_CHANNEL_ID", 0)))
+OFFICIAL_CHANNEL_IDS = parse_env_list("OFFICIAL_CHANNEL_IDS", [])
+
+BOT_SESSION_FILE_PATH = os.getenv("BOT_SESSION_FILE_PATH", "/app/sessions/broadcast_bot")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "production")
 
 # File to store group IDs
 GROUPS_FILE = "bot_groups.json"
@@ -80,6 +83,8 @@ def cleanup_failed_messages(removed_group_id):
 
 async def handle_chat_action(event):
     me = await event.client.get_me()
+    if is_channel(event.chat):
+        return
     if event.user_added and event.user_id == me.id:
         bot_groups.add(abs(event.chat_id))
         save_groups()
@@ -117,9 +122,8 @@ async def send_message(client: TelegramClient, group: int, message):
 
 
 async def broadcast_handler(event):
-    logger.info(f"Received message from official channel {OFFICIAL_CHANNEL_ID}")
-    if OFFICIAL_CHANNEL_ID == 0:
-        logger.warning("OFFICIAL_CHANNEL_ID is not set. Skipping broadcast.")
+    if not OFFICIAL_CHANNEL_IDS:
+        logger.warning("OFFICIAL_CHANNEL_IDS is not set. Skipping broadcast.")
         return
 
     message = event.message
@@ -176,7 +180,7 @@ async def channel_id_handler(event):
 
 async def start_handler(event):
     await event.reply(
-        f"Welcome! Use `/channelid` in the official channel to get its ID. [{BOT_VERSION}]"
+        f"Welcome! Use `/channelid` in any of the official channels to get its ID. [{BOT_VERSION}]"
     )
     logger.info("Start command received and processed")
 
@@ -188,6 +192,12 @@ async def list_groups(event):
     else:
         await event.reply("No groups in broadcast list.")
     logger.info(f"Listed groups: {bot_groups}")
+
+
+async def list_channels(event):
+    channels_list = "\n".join(str(channel) for channel in OFFICIAL_CHANNEL_IDS)
+    await event.reply(f"Official broadcast channels:\n{channels_list}")
+    logger.info(f"Listed official channels: {OFFICIAL_CHANNEL_IDS}")
 
 
 async def register_group(event):
@@ -227,20 +237,17 @@ async def reset_all_group(event):
     logger.info("Unregistered all groups from broadcast list")
 
 
-# TODO: Implement import/export bot_groups.json file
-
-
 async def main():
     load_groups()  # Load groups from file when starting
 
-    client = TelegramClient("/app/sessions/broadcast_bot", API_ID, API_HASH)
+    client = TelegramClient(BOT_SESSION_FILE_PATH, API_ID, API_HASH)
     await client.start(bot_token=BOT_TOKEN)
 
     @client.on(events.ChatAction())
     async def chat_action_handler(event):
         await handle_chat_action(event)
 
-    @client.on(events.NewMessage(chats=OFFICIAL_CHANNEL_ID))
+    @client.on(events.NewMessage(chats=OFFICIAL_CHANNEL_IDS))
     async def broadcast_handler_wrapper(event):
         await broadcast_handler(event)
 
@@ -255,12 +262,17 @@ async def main():
         await start_handler(event)
 
     @client.on(events.NewMessage(pattern="/listgroups"))
-    @specific_channel_only(OFFICIAL_CHANNEL_ID)
+    @channels_only()
     async def list_groups_handler(event):
         await list_groups(event)
 
+    @client.on(events.NewMessage(pattern="/listchannels"))
+    @channels_only()
+    async def list_channels_handler(event):
+        await list_channels(event)
+
     @client.on(events.NewMessage(pattern="/resetgroup"))
-    @specific_channel_only(OFFICIAL_CHANNEL_ID)
+    @channels_only()
     async def reset_group_handler(event):
         await reset_all_group(event)
 
@@ -274,22 +286,28 @@ async def main():
     async def unregister_handler(event):
         await unregister_group(event)
 
+    @client.on(events.NewMessage(pattern="/ping"))
+    async def ping_handler(event):
+        await event.reply(f"Pong! [{BOT_VERSION}]")
+        logger.info("Ping command received and processed")
+
     logger.info("Bot started and waiting for events.")
-    logger.info(f"Official Channel ID: {OFFICIAL_CHANNEL_ID}")
+    logger.info(f"Official Channel IDs: {OFFICIAL_CHANNEL_IDS}")
 
     # Start the retry mechanism
     asyncio.create_task(retry_failed_messages(client))
 
     # Print guidance message
     print(
-        "Bot started. Use the /channelid command in your official channel to get its ID."
+        "Bot started. Use the /channelid command in your official channels to get their IDs."
     )
     print("Use /listgroups to see all groups in the broadcast list.")
+    print("Use /listchannels to see all official broadcast channels.")
     print("Use /register in a group to add it to the broadcast list.")
 
-    if OFFICIAL_CHANNEL_ID == 0:
+    if not OFFICIAL_CHANNEL_IDS:
         logger.warning(
-            "OFFICIAL_CHANNEL_ID is not set. The bot will not broadcast messages until it's configured."
+            "OFFICIAL_CHANNEL_IDS is not set. The bot will not broadcast messages until it's configured."
         )
 
     await client.run_until_disconnected()
